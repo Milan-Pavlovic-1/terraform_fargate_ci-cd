@@ -1,0 +1,268 @@
+resource "aws_s3_bucket" "demos3" {
+  bucket = "testing-pipeline-terraform-please-work-brother"
+}
+
+#################################################################
+
+# CODEPIPELINE
+
+# aws role for codepipeline
+
+resource "aws_iam_role" "codepipeline_role" {
+  name               = "codepipeline_terraform_role__"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TrustPolicyStatementThatAllowsEC2ServiceToAssumeTheAttachedRole",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codepipeline.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+
+# attach inline policy
+
+resource "aws_iam_role_policy" "codepipeline_policy" {
+  name   = "policy_inline_terraform_codepipeline_"
+  role   = aws_iam_role.codepipeline_role.id
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect":"Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning",
+        "s3:PutObjectAcl",
+        "s3:PutObject",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "${aws_s3_bucket.demos3.arn}",
+        "${aws_s3_bucket.demos3.arn}/*",
+        "*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codestar-connections:UseConnection",
+        "codestar-connections:ListConnections"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:BatchGetBuilds",
+        "codebuild:StartBuild"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeStacks",
+        "kms:GenerateDataKey",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+
+
+#################################################################
+
+#################################################################
+
+# CODEBUILD
+
+resource "aws_iam_role" "codebuild_role" {
+  name               = "code_build_role_terraform_123_"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "codebuild.amazonaws.com"
+      },
+      "Effect": "Allow",
+      "Sid": "TrustPolicyStatementThatAllowsEC2ServiceToAssumeTheAttachedRole"
+    }
+  ]
+}
+EOF
+}
+
+
+resource "aws_iam_role_policy" "codebuild_policy" {
+  name   = "codebuild_test_policy_"
+  role   = aws_iam_role.codebuild_role.id
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:*",
+      "Effect": "Allow"
+    },
+    {
+            "Effect": "Allow",
+            "Action": [
+                "codestar-connections:UseConnection"
+            ],
+            "Resource": [
+                "*"
+            ]
+    },
+    {
+      "Sid": "AllowPullFromECRPublicGallery",
+      "Effect": "Allow",
+            "Action": [
+                "ecr-public:BatchGetImage",
+                "ecr-public:GetDownloadUrlForLayer"
+            ],
+            "Resource": [
+                "arn:aws:ecr:us-east-1:906330555725:repository/amazoncorretto/amazoncorretto:17",
+                "arn:aws:ecr:us-east-1:906330555725:repository/docker/library/maven:3.8.5-openjdk-17",
+                "arn:aws:ecr:us-east-1:906330555725:repository/nginx/nginx:1.18/",
+                "arn:aws:ecr:us-east-1:906330555725:repository/docker/library/node:latest"
+            ]
+        },
+        {
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${aws_s3_bucket.demos3.bucket}",
+        "arn:aws:s3:::${aws_s3_bucket.demos3.bucket}/*"
+      ],
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:GetAuthorizationToken",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": [
+        "*"
+      ],
+        "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "ecs:UpdateService",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "*"
+      ],
+        "Effect": "Allow"
+    }
+  ]
+}
+EOF
+}
+
+
+#####################
+
+# codedeploy role
+
+resource "aws_iam_role" "codedeploy_role" {
+  name = "codedeploy-role"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::906330555725:role/codepipeline_terraform_role__"
+      },
+      "Action": "sts:AssumeRole"
+    },
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codedeploy.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy" "codedeploy_policy" {
+  name   = "codedeploy_policy_tf"
+  role   = aws_iam_role.codedeploy_role.id
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3BucketPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:Get*",
+        "s3:List*"
+      ],
+      "Resource": "arn:aws:s3:::*/*"
+    },
+    {
+      "Sid": "ECSPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DeregisterTaskDefinition",
+        "ecs:ListTaskDefinitions",
+        "ecs:DescribeTaskDefinition",
+        "ecs:CreateService",
+        "ecs:UpdateService",
+        "ecs:DeleteService",
+        "ecs:DescribeServices",
+        "ecs:ListServices",
+        "ecs:DescribeClusters",
+        "ecs:ListClusters"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
