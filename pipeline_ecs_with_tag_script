@@ -1,7 +1,8 @@
 ################
 
 ############# full git clone + repository variable + in the other file necessary permissions for the code build role
-############# don't forget about the code-deploy role, we are still not sure what are permissions it requires for atm it is set to administrator access
+############# Don't forget about the code-deploy role, we are still not sure what permissions it requires for atm it is set to administrator access
+############# Even though you can not see the environment variable inside the console it is set, no worries
 
 resource "aws_codestarconnections_connection" "connection_example_" {
   name          = "dzenan-mp-connection_"
