@@ -1,0 +1,109 @@
+
+# resource if you are connecting to the github repository, you would again need to confirm it once the pipeline starts, also, the first pipeline with fail because of that pending confirmation
+
+/*resource "aws_codestarconnections_bitbucket" "example" {
+  name          = "demo_connection_tf_dzenan"
+  provider_type = "Bitbucket"
+}
+*/
+
+# make AWS CodePipeline
+resource "aws_codepipeline" "propass-ui-ecs" {
+  name     = "propass-ui-ecs"
+  role_arn = aws_iam_role.codepipeline_role.arn
+
+ # where to store the artifacts, between the stages
+  artifact_store {
+    location = aws_s3_bucket.demos3.bucket
+    type     = "S3"
+  }
+
+  # source stage
+stage {
+    name = "Source"
+
+    action {
+      name             = "Source"
+      category         = "Source"
+      owner            = "AWS"
+      provider         = "CodeStarSourceConnection"
+      version          = "1"
+      output_artifacts = ["source_output"]
+
+      configuration = {
+        BranchName           = "master"
+        ConnectionArn        = "arn:aws:codestar-connections:us-east-1:906330555725:connection/bb98650d-c472-4708-9558-4d214de01510" # the variable for connection is referenced here
+        FullRepositoryId     = "myworkspace123x/macka" # "propass/propass" # organization or project/ name of the repository
+        OutputArtifactFormat = "CODEBUILD_CLONE_REF" # full clone option if you want to use bash scripts, default is zip
+      }
+    }
+  }
+
+  # build stage
+  stage {
+    name = "Build"
+
+    action {
+      name             = "BuildAction"
+      category         = "Build"
+      owner            = "AWS"
+      provider         = "CodeBuild"
+      version          = "1"
+      input_artifacts  = ["source_output"]
+      output_artifacts = ["build"]
+
+      configuration = {
+        ProjectName = aws_codebuild_project.build.name
+      }
+    }
+  }
+
+  # deploy stage
+  stage {
+    name = "Deploy"
+
+    action {
+      name            = "DeployAction"
+      category        = "Deploy"
+      owner           = "AWS"
+      provider        = "ECS"
+      version         = "1"
+      input_artifacts = ["build"]
+
+
+      role_arn = aws_iam_role.codedeploy_role.arn
+      configuration = {
+        ClusterName = aws_ecs_cluster.my_cluster.name
+        ServiceName = aws_ecs_service.my_service.name
+      }
+    }
+  }
+}
+
+
+# codebuild project
+resource "aws_codebuild_project" "build" {
+  name         = "propass_ui_project_ecs"
+  service_role = aws_iam_role.codebuild_role.arn
+
+  artifacts {
+    type = "CODEPIPELINE"
+  }
+
+  environment {
+    compute_type    = "BUILD_GENERAL1_SMALL"
+    image           = "aws/codebuild/standard:5.0"
+    type            = "LINUX_CONTAINER"
+    privileged_mode = true # important
+
+    environment_variable {
+      name  = "GIT_DISCOVERY_ACROSS_FILESYSTEM"
+      value = var.GIT_DISCOVERY_ACROSS_FILESYSTEM # even though you won't see it in the console, it is there
+    }
+  }
+
+  source {
+    type      = "CODEPIPELINE"
+    buildspec = "buildspec.yml" # Update with your buildspec file name
+  }
+}
