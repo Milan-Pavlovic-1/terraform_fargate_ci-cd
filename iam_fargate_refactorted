@@ -1,0 +1,55 @@
+# create custom ecs task role that will give us access to the secret manager 
+resource "aws_iam_role" "ecs_task_role" {
+  name = "ecs_task_role"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+      },
+      "Effect": "Allow"
+    }
+  ]
+}
+EOF
+
+  tags = {
+    tag-key = "ecs_task_role"
+  }
+}
+
+# create IAM policy that allows all actions on all secret manager secrets
+resource "aws_iam_policy" "secrets_manager_policy" {
+  name        = "secrets-manager-policy"
+  description = "IAM policy for Secrets Manager access"
+  policy = jsonencode({
+    Version : "2012-10-17",
+    Statement : [
+      {
+        Effect : "Allow",
+        Action : "secretsmanager:*",
+        Resource : "*"
+      }
+    ]
+  })
+}
+
+# attach IAM policy to the IAM role
+resource "aws_iam_role_policy_attachment" "ecs_task_policy_attachment" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.secrets_manager_policy.arn
+}
+
+
+# fetching ecsTaskExecutionRole created by AWS -> to be able to pull images from ECR
+data "aws_iam_role" "ecs_task_execution_role" {
+  name = "ecsTaskExecutionRole"
+}
+
+output "ecs_task_execution_role_arn" {
+  value = data.aws_iam_role.ecs_task_execution_role.arn
+}
