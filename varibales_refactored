@@ -1,0 +1,82 @@
+# env variable to point to the specified environment
+variable "environment_postfix" {
+  type        = string
+  default     = "dev1"
+}
+
+######## region is chosen at the bitbucket repository level, although you can set it at terraform.tf file as well
+
+variable "AZ-1" {
+  type        = string
+  default     = "us-east-1a" # update with the corresponding az relative to the region you choose
+}
+
+variable "AZ-2" {
+  type        = string
+  default     = "us-east-1b" # update with the corresponding az relative to the region you choose
+}
+
+variable "db_password" {
+  type        = string
+  default     = "adeva3n7" # password for the master user for the rds database
+}
+
+variable "multi_az" {
+  type        = bool
+  default     = "false"
+  description = "determines whether the rds database is in multi az mode"
+}
+
+variable "domain_name" {
+  default = "altitude-tech.net" # Update with your domain name
+}
+
+variable "subdomain_name" {
+  default = "propass-ui-ecs" # Update with your desired subdomain name
+}
+
+
+/*variable "github_repo_owner" {
+  default = "Milan-Pavlovic-1"
+}
+variable "github_repo_name" {
+  default = "ui-propass-pipeline"
+}
+variable "github_branch" {
+  default = "main"
+}
+
+variable "image_repo_name" {
+  default = "propass-ui"
+}
+
+variable "aws_account_id" {
+  default = "906330555725"
+}
+variable "aws_region" {
+  default = "eu-central-1"
+}
+
+variable "image_tag" {
+  default = "latest"
+}
+variable "image_repo_url" {
+  default = "906330555725.dkr.ecr.us-east-1.amazonaws.com/propass-ui"
+}
+*/
+
+# needed variable if you are planing to use any bash shell scripts during build stage
+variable "GIT_DISCOVERY_ACROSS_FILESYSTEM" { 
+  default = "1"
+}
+
+
+# this bitbucket connection must be set prior, this is to ensure that your aws account is connected to the bitbucket repositories
+# https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create-bitbucket.html
+# never store this connection string as plain text, make sure you import this as a bitbucket environment variable and then assign its value to the variable
+# https://console.aws.amazon.com/codesuite/settings/connections
+variable "bitbucket_connection" {
+  type    = string
+  default = "arn:aws:codestar-connections:us-east-1:906330555725:connection/bb98650d-c472-4708-9558-4d214de01510" #"arn:aws:codestar-connections:us-east-1:906330555725:connection/293e3ca6-4754-43ca-b5de-a96189a99329"
+#default = ""
+}
