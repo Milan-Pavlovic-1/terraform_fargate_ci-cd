@@ -1,0 +1,267 @@
+resource "aws_s3_bucket" "demos3" {
+  bucket = "ecs-fargate-propass-ui-pipeline"
+}
+
+
+# IAM role for AWS CodePipeline
+resource "aws_iam_role" "codepipeline_role" {
+  name               = "codepipeline_role_propass_ui"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TrustPolicyStatementThatAllowsEC2ServiceToAssumeTheAttachedRole",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codepipeline.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+# policy to attach to the AWS CodePipeline IAM role
+resource "aws_iam_policy" "codepipeline_policy" {
+  name        = "codepipeline_policy_role"
+  description = "Example IAM policy"
+  policy      = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect":"Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning",
+        "s3:PutObjectAcl",
+        "s3:PutObject",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codestar-connections:UseConnection",
+        "codestar-connections:ListConnections"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:BatchGetBuilds",
+        "codebuild:StartBuild"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeStacks",
+        "kms:GenerateDataKey",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+# attach the policy to the AWS CodePipeline role
+resource "aws_iam_role_policy_attachment" "attach_codepipeline_policy" {
+  role       = aws_iam_role.codepipeline_role.name
+  policy_arn = aws_iam_policy.codepipeline_policy.arn
+}
+
+
+##################################################################################################################
+
+
+# IAM role for AWS CodeBuild
+resource "aws_iam_role" "codebuild_role" {
+  name               = "codebuild_role_propass_ui"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "codebuild.amazonaws.com"
+      },
+      "Effect": "Allow",
+      "Sid": "TrustPolicyStatementThatAllowsEC2ServiceToAssumeTheAttachedRole"
+    }
+  ]
+}
+EOF
+}
+
+
+# policy to attach to the AWS CodeBuild IAM role
+resource "aws_iam_policy" "codebuild_policy" {
+  name        = "codebuild_policy_role"
+  description = "Example IAM policy"
+  policy      = <<EOF
+{
+ "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:*",
+      "Effect": "Allow"
+    },
+    {
+            "Effect": "Allow",
+            "Action": [
+                "codestar-connections:UseConnection"
+            ],
+            "Resource": [
+                "*"
+            ]
+    },
+    {
+      "Sid": "AllowPullFromECRPublicGallery",
+      "Effect": "Allow",
+            "Action": [
+                "ecr-public:BatchGetImage",
+                "ecr-public:GetDownloadUrlForLayer"
+            ],
+            "Resource": [
+                "arn:aws:ecr:us-east-1:906330555725:repository/amazoncorretto/amazoncorretto:17",
+                "arn:aws:ecr:us-east-1:906330555725:repository/docker/library/maven:3.8.5-openjdk-17",
+                "arn:aws:ecr:us-east-1:906330555725:repository/nginx/nginx:1.18/",
+                "arn:aws:ecr:us-east-1:906330555725:repository/docker/library/node:latest"
+            ]
+        },
+        {
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": [ "*"],
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:GetAuthorizationToken",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": [
+        "*"
+      ],
+        "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "ecs:UpdateService",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "*"
+      ],
+        "Effect": "Allow"
+    }
+  ]
+}
+EOF
+}
+
+# attach the policy to the AWS CodeBuild role
+resource "aws_iam_role_policy_attachment" "attach_codebuild_policy" {
+  role       = aws_iam_role.codebuild_role.name
+  policy_arn = aws_iam_policy.codebuild_policy.arn
+}
+
+
+##################################################################################################################
+
+# IAM role for AWS CodeDeploy
+resource "aws_iam_role" "codedeploy_role" {
+  name = "codedeploy_role_propass-ui"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::906330555725:role/codepipeline_role_propass_ui"
+      },
+      "Action": "sts:AssumeRole"
+    },
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codedeploy.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+# policy to attach to the AWS CodeDeploy IAM role
+resource "aws_iam_policy" "codedeploy_policy" {
+  name        = "codedeploy_policy_role"
+  policy      = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codestar-connections:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+# attach the policy to the AWS CodeBuild role
+resource "aws_iam_role_policy_attachment" "attach_codedeploy_policy" {
+  role       = aws_iam_role.codedeploy_role.name
+  policy_arn = aws_iam_policy.codedeploy_policy.arn
+}
+
