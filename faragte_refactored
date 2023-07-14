@@ -1,0 +1,185 @@
+# fargate cluster
+resource "aws_ecs_cluster" "my_cluster" {
+  name = "propass-ui"
+}
+
+# ecs_task_role -> what your tasks need to access to run properly
+# ecsTaskExecutionRole -> pull from ECR, logs, etc.
+
+# task definition for propass-ui
+resource "aws_ecs_task_definition" "my_task_definition" {
+  family                   = "propass-ui-task"
+  execution_role_arn       = "arn:aws:iam::906330555725:role/ecsTaskExecutionRole" # hardcoded, not good
+  task_role_arn            = "arn:aws:iam::906330555725:role/ecs_task_role" # hardcoded, not good
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = 1024
+  memory                   = 2048
+
+  container_definitions = jsonencode([
+    {
+      "name"      = "propass-ui"
+      "image"     = "906330555725.dkr.ecr.us-east-1.amazonaws.com/propass-ui:latest"
+      "cpu"       = 1024
+      "memory"    = 1024
+      "essential" = true
+      "portMappings" = [
+        {
+          "containerPort" = 80
+          "hostPort"      = 80
+          "protocol"      = "tcp"
+        }
+      ]
+    }
+  ])
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+}
+
+#DNS validation -> fetch domain zone I have
+data "aws_route53_zone" "main" {
+  name = var.domain_name
+}
+
+
+# R53 record alias
+resource "aws_route53_record" "ui_propass" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "${var.subdomain_name}.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.my_alb.dns_name
+    zone_id                = aws_lb.my_alb.zone_id
+    evaluate_target_health = true
+  }
+}
+
+
+
+# request a SSL certificate to attach to the ALB
+
+resource "aws_acm_certificate" "wildcard_certificate" {
+  domain_name       = "*.${var.domain_name}"
+  validation_method = "DNS"
+
+  tags = {
+    Name = "WildcardCertificate"
+  }
+}
+
+# extract the necessary values from the certificate in order to properly validate it
+locals {
+  domain_validation_options_list = tolist(aws_acm_certificate.wildcard_certificate.domain_validation_options)
+}
+
+# make a record inside the domain hosted zone pointing to the ssl certificate
+resource "aws_route53_record" "acm_validation" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = local.domain_validation_options_list[0].resource_record_name
+  type    = local.domain_validation_options_list[0].resource_record_type
+  ttl     = "300"
+  records = [local.domain_validation_options_list[0].resource_record_value]
+}
+
+# validate the certificate
+resource "aws_acm_certificate_validation" "wildcard_certificate_validation" {
+  certificate_arn         = aws_acm_certificate.wildcard_certificate.arn
+  validation_record_fqdns = [aws_route53_record.acm_validation.fqdn]
+}
+
+
+# alb
+resource "aws_lb" "my_alb" {
+  name               = "propass-ui-alb"
+  load_balancer_type = "application"
+  subnets            = [aws_subnet.public-subnet-1.id, aws_subnet.public-subnet-2.id]
+  security_groups    = [aws_security_group.alb_sg.id]
+}
+
+# target group to route traffic to
+resource "aws_lb_target_group" "my_target_group" {
+  name        = "propass-ui-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.propass_vpc.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
+}
+
+# listener for alb, atm for 80 only, but we will add 433 as well
+resource "aws_lb_listener" "my_listener" {
+  load_balancer_arn = aws_lb.my_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# Listener on port 443 with SSL certificate
+resource "aws_lb_listener" "https_listener" {
+  load_balancer_arn = aws_lb.my_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+
+  default_action {
+    target_group_arn = aws_lb_target_group.my_target_group.arn
+    type             = "forward"
+  }
+
+  certificate_arn = aws_acm_certificate.wildcard_certificate.arn
+}
+
+
+#####################################################################
+
+
+# ECS Service for propass-ui
+resource "aws_ecs_service" "my_service" {
+  name            = "propass-ui-service"
+  cluster         = aws_ecs_cluster.my_cluster.id
+  task_definition = aws_ecs_task_definition.my_task_definition.arn
+  desired_count   = 1
+
+  launch_type         = "FARGATE" # Specify the launch type as Fargate
+  scheduling_strategy = "REPLICA" # Specify the service type as Replica
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+  health_check_grace_period_seconds  = 40
+
+  # network configuration
+  network_configuration {
+    subnets          = [aws_subnet.public-subnet-1.id, aws_subnet.public-subnet-1.id]
+    security_groups  = [aws_security_group.propass-api.id]
+    assign_public_ip = true
+  }
+
+
+# load balancer
+  load_balancer {
+    target_group_arn = aws_lb_target_group.my_target_group.arn
+    container_name   = "propass-ui"
+    container_port   = 80
+  }
+}
+
